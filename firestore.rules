@@ -1,0 +1,264 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Validation Helpers ---
+
+    function isValidRoom(data) {
+      return data.roomCode is string && data.roomCode.size() == 6 &&
+             data.hostUid is string && data.hostUid.size() <= 128 &&
+             data.caseId is string && data.caseId.size() <= 128 &&
+             data.status in ['LOBBY', 'BRIEFING', 'INVESTIGATION', 'TWIST', 'DEBATE', 'VOTING', 'RESOLUTION'] &&
+             data.playerCount is int && data.playerCount >= 0 && data.playerCount <= 20 &&
+             data.maxPlayers is int && data.maxPlayers >= 1 && data.maxPlayers <= 20 &&
+             (!('turnNumber' in data) || data.turnNumber is int) &&
+             (!('activeTwistId' in data) || (data.activeTwistId is string && data.activeTwistId.size() <= 128));
+    }
+
+    function isValidPlayer(data) {
+      return data.uid is string && data.uid.size() <= 128 &&
+             data.alias is string && data.alias.size() >= 1 && data.alias.size() <= 50 &&
+             data.isHost is bool &&
+             data.isReady is bool &&
+             data.isOnline is bool &&
+             (!('assignedCharacterId' in data) || (data.assignedCharacterId is string && data.assignedCharacterId.size() <= 128)) &&
+             (!('assignedCharacterName' in data) || (data.assignedCharacterName is string && data.assignedCharacterName.size() <= 100));
+    }
+
+    function isValidPrivateDossier(data) {
+      return data.uid is string && data.uid.size() <= 128 &&
+             data.characterId is string && data.characterId.size() <= 128 &&
+             data.isCulprit is bool &&
+             data.secretObjective is string && data.secretObjective.size() <= 1000 &&
+             (!('alibiSecret' in data) || (data.alibiSecret is string && data.alibiSecret.size() <= 2000)) &&
+             (!('knownSecrets' in data) || (data.knownSecrets is string && data.knownSecrets.size() <= 2000));
+    }
+
+    function isValidEvidence(data) {
+      return data.evidenceId is string && data.evidenceId.size() <= 128 &&
+             data.discoveredByUid is string && data.discoveredByUid.size() <= 128 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.description is string && data.description.size() <= 2000 &&
+             data.locationId is string && data.locationId.size() <= 128 &&
+             data.isSmokingGun is bool &&
+             data.isShared is bool;
+    }
+
+    function isValidMessage(data) {
+      return data.senderUid is string && data.senderUid.size() <= 128 &&
+             data.senderAlias is string && data.senderAlias.size() >= 1 && data.senderAlias.size() <= 50 &&
+             data.recipientUid is string && data.recipientUid.size() <= 128 &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 2000;
+    }
+
+    function isValidDeal(data) {
+      return data.senderUid is string && data.senderUid.size() <= 128 &&
+             data.targetUid is string && data.targetUid.size() <= 128 &&
+             data.terms is string && data.terms.size() >= 1 && data.terms.size() <= 1000 &&
+             data.status in ['PENDING', 'ACCEPTED', 'REJECTED'] &&
+             (!('offeredClueId' in data) || (data.offeredClueId is string && data.offeredClueId.size() <= 128)) &&
+             (!('requestedClueId' in data) || (data.requestedClueId is string && data.requestedClueId.size() <= 128));
+    }
+
+    function isValidVote(data) {
+      return data.voterUid is string && data.voterUid.size() <= 128 &&
+             data.accusedCharacterId is string && data.accusedCharacterId.size() <= 128 &&
+             data.smokingGunEvidenceId is string && data.smokingGunEvidenceId.size() <= 128 &&
+             data.motive is string && data.motive.size() >= 1 && data.motive.size() <= 1000;
+    }
+
+    function isValidCase(data) {
+      return data.caseId is string && data.caseId.size() <= 128 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.synopsis is string && data.synopsis.size() <= 4000 &&
+             data.difficulty in ['CASUAL', 'INTERMEDIATE', 'MASTERMIND'] &&
+             data.creatorUid is string && data.creatorUid.size() <= 128 &&
+             data.isPublic is bool &&
+             data.caseJson is string && data.caseJson.size() <= 500000;
+    }
+
+    // --- Rooms Collection ---
+
+    match /rooms/{roomId} {
+      allow get: if isSignedIn() && isValidId(roomId);
+      allow list: if isSignedIn();
+
+      allow create: if isSignedIn() && isValidId(roomId) &&
+                       incoming().hostUid == request.auth.uid &&
+                       incoming().keys().hasAll(['roomCode', 'hostUid', 'caseId', 'status', 'playerCount', 'maxPlayers', 'createdAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       isValidRoom(incoming());
+
+      allow update: if isSignedIn() && isValidId(roomId) &&
+                       isValidRoom(incoming()) &&
+                       incoming().hostUid == existing().hostUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         // Host full update
+                         (existing().hostUid == request.auth.uid) ||
+                         // Non-host join/leave count update
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['playerCount', 'updatedAt']))
+                       );
+
+      allow delete: if isSignedIn() && isValidId(roomId) && existing().hostUid == request.auth.uid;
+
+      // Players subcollection
+      match /players/{uid} {
+        allow get: if isSignedIn() && isValidId(uid);
+        allow list: if isSignedIn();
+
+        allow create: if isSignedIn() && isValidId(uid) &&
+                         (request.auth.uid == uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid) &&
+                         incoming().uid == uid &&
+                         incoming().keys().hasAll(['uid', 'alias', 'isHost', 'isReady', 'isOnline']) &&
+                         isValidPlayer(incoming());
+
+        allow update: if isSignedIn() && isValidId(uid) &&
+                         isValidPlayer(incoming()) &&
+                         incoming().uid == existing().uid &&
+                         (
+                           request.auth.uid == uid ||
+                           get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid
+                         );
+
+        allow delete: if isSignedIn() && isValidId(uid) &&
+                         (
+                           request.auth.uid == uid ||
+                           get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid
+                         );
+      }
+
+      // Private Dossiers: strictly accessible ONLY to the owner
+      match /privateDossiers/{uid} {
+        allow get: if isSignedIn() && isValidId(uid) && (request.auth.uid == uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid);
+        allow list: if isSignedIn() && (request.auth.uid == uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid);
+
+        allow create, update: if isSignedIn() && isValidId(uid) &&
+                                 (request.auth.uid == uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid) &&
+                                 incoming().uid == uid &&
+                                 isValidPrivateDossier(incoming());
+
+        allow delete: if isSignedIn() && isValidId(uid) &&
+                         (request.auth.uid == uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid);
+      }
+
+      // Evidence collection
+      match /evidence/{evidenceId} {
+        allow get, list: if isSignedIn() && isValidId(evidenceId);
+
+        allow create: if isSignedIn() && isValidId(evidenceId) &&
+                         incoming().discoveredByUid == request.auth.uid &&
+                         incoming().evidenceId == evidenceId &&
+                         isValidEvidence(incoming());
+
+        allow update: if isSignedIn() && isValidId(evidenceId) &&
+                         isValidEvidence(incoming()) &&
+                         (
+                           existing().discoveredByUid == request.auth.uid ||
+                           get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid
+                         );
+
+        allow delete: if isSignedIn() && isValidId(evidenceId) &&
+                         (
+                           existing().discoveredByUid == request.auth.uid ||
+                           get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid
+                         );
+      }
+
+      // Chat Messages
+      match /messages/{messageId} {
+        allow get: if isSignedIn() && isValidId(messageId) &&
+                      (resource.data.recipientUid == 'PUBLIC' || resource.data.recipientUid == request.auth.uid || resource.data.senderUid == request.auth.uid);
+
+        allow list: if isSignedIn() &&
+                       (resource.data.recipientUid == 'PUBLIC' || resource.data.recipientUid == request.auth.uid || resource.data.senderUid == request.auth.uid);
+
+        allow create: if isSignedIn() && isValidId(messageId) &&
+                         incoming().senderUid == request.auth.uid &&
+                         incoming().timestamp is timestamp && incoming().timestamp <= request.time &&
+                         isValidMessage(incoming());
+
+        allow update, delete: if false; // Append-only immutable log
+      }
+
+      // Deals
+      match /deals/{dealId} {
+        allow get, list: if isSignedIn() && isValidId(dealId) &&
+                            (resource.data.senderUid == request.auth.uid || resource.data.targetUid == request.auth.uid);
+
+        allow create: if isSignedIn() && isValidId(dealId) &&
+                         incoming().senderUid == request.auth.uid &&
+                         isValidDeal(incoming());
+
+        allow update: if isSignedIn() && isValidId(dealId) &&
+                         (existing().senderUid == request.auth.uid || existing().targetUid == request.auth.uid) &&
+                         isValidDeal(incoming()) &&
+                         incoming().senderUid == existing().senderUid &&
+                         incoming().targetUid == existing().targetUid;
+
+        allow delete: if isSignedIn() && isValidId(dealId) && existing().senderUid == request.auth.uid;
+      }
+
+      // Votes (Ballots)
+      match /votes/{uid} {
+        allow get: if isSignedIn() && isValidId(uid) &&
+                      (request.auth.uid == uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.status == 'RESOLUTION');
+
+        allow list: if isSignedIn() &&
+                       (request.auth.uid == uid || get(/databases/$(database)/documents/rooms/$(roomId)).data.status == 'RESOLUTION');
+
+        allow create, update: if isSignedIn() && isValidId(uid) &&
+                                 request.auth.uid == uid &&
+                                 incoming().voterUid == request.auth.uid &&
+                                 isValidVote(incoming());
+
+        allow delete: if false;
+      }
+    }
+
+    // --- Case Library ---
+
+    match /cases/{caseId} {
+      allow get: if isSignedIn() && isValidId(caseId) &&
+                    (resource.data.isPublic == true || resource.data.creatorUid == request.auth.uid);
+
+      allow list: if isSignedIn() &&
+                     (resource.data.isPublic == true || resource.data.creatorUid == request.auth.uid);
+
+      allow create: if isSignedIn() && isValidId(caseId) &&
+                       incoming().caseId == caseId &&
+                       incoming().creatorUid == request.auth.uid &&
+                       incoming().keys().hasAll(['caseId', 'title', 'synopsis', 'difficulty', 'creatorUid', 'isPublic', 'caseJson']) &&
+                       isValidCase(incoming());
+
+      allow update: if isSignedIn() && isValidId(caseId) &&
+                       existing().creatorUid == request.auth.uid &&
+                       incoming().creatorUid == request.auth.uid &&
+                       incoming().caseId == caseId &&
+                       isValidCase(incoming());
+
+      allow delete: if isSignedIn() && isValidId(caseId) && existing().creatorUid == request.auth.uid;
+    }
+  }
+}

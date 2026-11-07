@@ -1,0 +1,161 @@
+{
+  "entities": {
+    "Room": {
+      "title": "Room",
+      "description": "Multiplayer investigation room document",
+      "type": "object",
+      "properties": {
+        "roomCode": { "type": "string", "description": "6-digit uppercase alphanumeric join code" },
+        "hostUid": { "type": "string", "description": "UID of the room creator" },
+        "caseId": { "type": "string", "description": "Selected case ID" },
+        "status": { "type": "string", "enum": ["LOBBY", "BRIEFING", "INVESTIGATION", "TWIST", "DEBATE", "VOTING", "RESOLUTION"], "description": "Current gameplay phase" },
+        "playerCount": { "type": "integer", "description": "Current number of players" },
+        "maxPlayers": { "type": "integer", "description": "Player cap (e.g. 4 to 8)" },
+        "turnNumber": { "type": "integer", "description": "Round or turn counter" },
+        "activeTwistId": { "type": "string", "description": "Optional active mid-game twist ID" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp via serverTimestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp via serverTimestamp" }
+      },
+      "required": ["roomCode", "hostUid", "caseId", "status", "playerCount", "maxPlayers", "createdAt"]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "Participant in an investigation room",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "alias": { "type": "string", "description": "Chosen detective alias" },
+        "isHost": { "type": "boolean", "description": "Whether player is the host" },
+        "isReady": { "type": "boolean", "description": "Lobby ready status" },
+        "assignedCharacterId": { "type": "string", "description": "Assigned suspect character ID" },
+        "assignedCharacterName": { "type": "string", "description": "Character display name" },
+        "isOnline": { "type": "boolean", "description": "Presence flag" },
+        "joinedAt": { "type": "string", "format": "date-time", "description": "Join timestamp via serverTimestamp" }
+      },
+      "required": ["uid", "alias", "isHost", "isReady", "isOnline"]
+    },
+    "PrivateDossier": {
+      "title": "PrivateDossier",
+      "description": "Private character assignment and secret objective dossier",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner UID who receives this dossier" },
+        "characterId": { "type": "string", "description": "Character ID" },
+        "isCulprit": { "type": "boolean", "description": "Whether this character is the killer" },
+        "secretObjective": { "type": "string", "description": "Hidden mission description" },
+        "alibiSecret": { "type": "string", "description": "Private alibi explanation" },
+        "knownSecrets": { "type": "string", "description": "Secrets known about other characters" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["uid", "characterId", "isCulprit", "secretObjective"]
+    },
+    "Evidence": {
+      "title": "Evidence",
+      "description": "Discovered clue or evidence item in the room",
+      "type": "object",
+      "properties": {
+        "evidenceId": { "type": "string", "description": "Unique evidence ID" },
+        "discoveredByUid": { "type": "string", "description": "Player UID who found or shared this clue" },
+        "title": { "type": "string", "description": "Evidence title" },
+        "description": { "type": "string", "description": "Evidence description" },
+        "locationId": { "type": "string", "description": "Location where discovered" },
+        "isSmokingGun": { "type": "boolean", "description": "Whether this is decisive evidence" },
+        "isShared": { "type": "boolean", "description": "Shared publicly with all detectives" },
+        "discoveredAt": { "type": "string", "format": "date-time", "description": "Discovery timestamp" }
+      },
+      "required": ["evidenceId", "discoveredByUid", "title", "description", "locationId", "isSmokingGun", "isShared"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Direct message or public debate chat message",
+      "type": "object",
+      "properties": {
+        "senderUid": { "type": "string", "description": "Sender UID" },
+        "senderAlias": { "type": "string", "description": "Sender alias" },
+        "recipientUid": { "type": "string", "description": "Recipient UID, or 'PUBLIC' for group chat" },
+        "text": { "type": "string", "description": "Message content" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Message timestamp via serverTimestamp" }
+      },
+      "required": ["senderUid", "senderAlias", "recipientUid", "text", "timestamp"]
+    },
+    "Deal": {
+      "title": "Deal",
+      "description": "Secret alliance or trade proposal between two detectives",
+      "type": "object",
+      "properties": {
+        "senderUid": { "type": "string", "description": "Proposer UID" },
+        "targetUid": { "type": "string", "description": "Recipient UID" },
+        "offeredClueId": { "type": "string", "description": "Clue offered" },
+        "requestedClueId": { "type": "string", "description": "Clue requested" },
+        "terms": { "type": "string", "description": "Terms of deal" },
+        "status": { "type": "string", "enum": ["PENDING", "ACCEPTED", "REJECTED"], "description": "Deal status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp" }
+      },
+      "required": ["senderUid", "targetUid", "terms", "status"]
+    },
+    "Vote": {
+      "title": "Vote",
+      "description": "Secret ballot cast by a player during voting phase",
+      "type": "object",
+      "properties": {
+        "voterUid": { "type": "string", "description": "Voter UID" },
+        "accusedCharacterId": { "type": "string", "description": "Accused suspect character ID" },
+        "smokingGunEvidenceId": { "type": "string", "description": "Supporting evidence ID" },
+        "motive": { "type": "string", "description": "Accusation motive" },
+        "submittedAt": { "type": "string", "format": "date-time", "description": "Timestamp" }
+      },
+      "required": ["voterUid", "accusedCharacterId", "smokingGunEvidenceId", "motive"]
+    },
+    "Case": {
+      "title": "Case",
+      "description": "Case file record in library",
+      "type": "object",
+      "properties": {
+        "caseId": { "type": "string", "description": "Unique case ID" },
+        "title": { "type": "string", "description": "Case title" },
+        "synopsis": { "type": "string", "description": "Case synopsis" },
+        "difficulty": { "type": "string", "enum": ["CASUAL", "INTERMEDIATE", "MASTERMIND"], "description": "Difficulty level" },
+        "estimatedDurationMinutes": { "type": "integer", "description": "Duration" },
+        "creatorUid": { "type": "string", "description": "Creator UID or 'SYSTEM'" },
+        "isPublic": { "type": "boolean", "description": "Visible to all players" },
+        "caseJson": { "type": "string", "description": "Full serialized CaseData payload" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["caseId", "title", "synopsis", "difficulty", "creatorUid", "isPublic", "caseJson"]
+    }
+  },
+  "firestore": {
+    "/rooms/{roomId}": {
+      "schema": { "$ref": "Room" },
+      "description": "Active game rooms"
+    },
+    "/rooms/{roomId}/players/{uid}": {
+      "schema": { "$ref": "Player" },
+      "description": "Players in room"
+    },
+    "/rooms/{roomId}/privateDossiers/{uid}": {
+      "schema": { "$ref": "PrivateDossier" },
+      "description": "Secret player dossiers accessible only to designated player"
+    },
+    "/rooms/{roomId}/evidence/{evidenceId}": {
+      "schema": { "$ref": "Evidence" },
+      "description": "Discovered and shared evidence items"
+    },
+    "/rooms/{roomId}/messages/{messageId}": {
+      "schema": { "$ref": "Message" },
+      "description": "Chat messages and direct messages"
+    },
+    "/rooms/{roomId}/deals/{dealId}": {
+      "schema": { "$ref": "Deal" },
+      "description": "Secret deals between players"
+    },
+    "/rooms/{roomId}/votes/{uid}": {
+      "schema": { "$ref": "Vote" },
+      "description": "Secret player accusation ballots"
+    },
+    "/cases/{caseId}": {
+      "schema": { "$ref": "Case" },
+      "description": "Case library files"
+    }
+  }
+}

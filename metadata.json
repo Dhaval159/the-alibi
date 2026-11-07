@@ -1,0 +1,8 @@
+{
+  "name": "The Alibi",
+  "description": "AI-powered social deduction game where you investigate dynamic, Gemini-generated mysteries to identify the culprit among your friends.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
