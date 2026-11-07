@@ -19,27 +19,23 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.data.firebase.FirebaseAuthRepository
 import com.example.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun GoogleSignInScreen(
     authRepository: FirebaseAuthRepository,
-    onAuthSuccess: () -> Unit
+    onAuthSuccess: () -> Unit,
+    onDismiss: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        authRepository.attemptAutoSignIn(
-            scope = coroutineScope,
-            onSuccess = { onAuthSuccess() },
-            onUnauthenticated = { /* Allow interactive sign in */ }
-        )
-    }
+    val authIdentity by authRepository.authIdentity.collectAsStateWithLifecycle()
 
     Box(
         modifier = Modifier
@@ -83,7 +79,7 @@ fun GoogleSignInScreen(
                 )
 
                 Text(
-                    text = "AUTHORITATIVE MULTIPLAYER DOSSIER",
+                    text = "INVESTIGATOR IDENTITY & ACCESS",
                     color = GoldLight,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -92,16 +88,56 @@ fun GoogleSignInScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Text(
-                    text = "Sign in to join real-time multiplayer rooms, synchronize clues, unlock encrypted suspect dossiers, and cast secret accusation ballots.",
-                    color = MutedText,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 18.sp
-                )
+                // Display current identity state
+                if (authIdentity != null) {
+                    val id = authIdentity!!
+                    Surface(
+                        color = NoirBackground,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, GoldMuted, RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = if (id.isAnonymous) "CURRENTLY: ANONYMOUS GUEST" else "CURRENTLY: GOOGLE ACCOUNT",
+                                color = GoldLight,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "UID: ${id.uid}",
+                                color = MutedText,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                textAlign = TextAlign.Center
+                            )
+                            if (id.email != null) {
+                                Text(
+                                    text = id.email,
+                                    color = MutedText,
+                                    fontSize = 11.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                } else {
+                    Text(
+                        text = "Enter as an anonymous guest or sign in to link your Google account for persistent detective credentials.",
+                        color = MutedText,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 18.sp
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
 
-                Spacer(modifier = Modifier.height(28.dp))
-
+                // 1. Google Sign-In / Link button
                 Button(
                     onClick = {
                         isLoading = true
@@ -143,12 +179,79 @@ fun GoogleSignInScreen(
                             strokeWidth = 2.dp
                         )
                     } else {
+                        val isAnon = authIdentity?.isAnonymous == true
                         Text(
-                            text = "SIGN IN WITH GOOGLE",
+                            text = if (isAnon) "LINK GOOGLE ACCOUNT" else "SIGN IN WITH GOOGLE",
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
                             letterSpacing = 1.sp
                         )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 2. Continue as Anonymous Guest button
+                OutlinedButton(
+                    onClick = {
+                        isLoading = true
+                        errorMessage = null
+                        coroutineScope.launch {
+                            val result = authRepository.signInAnonymously()
+                            isLoading = false
+                            if (result.isSuccess) {
+                                onAuthSuccess()
+                            } else {
+                                errorMessage = result.exceptionOrNull()?.localizedMessage ?: "Anonymous sign-in failed"
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GoldAccent),
+                    border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(GoldAccent)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("anonymous_sign_in_button"),
+                    enabled = !isLoading
+                ) {
+                    Text(
+                        text = if (authIdentity != null) "CONTINUE AS GUEST" else "PLAY AS ANONYMOUS GUEST",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                // 3. Reset / Sign Out (Controlled mechanism for dev/testing)
+                if (authIdentity != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    TextButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                isLoading = true
+                                authRepository.resetAuth()
+                                isLoading = false
+                            }
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MutedText),
+                        enabled = !isLoading
+                    ) {
+                        Text(
+                            text = "RESET / SIGN OUT (DEV TESTING)",
+                            fontSize = 11.sp,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+
+                if (onDismiss != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.textButtonColors(contentColor = GoldLight)
+                    ) {
+                        Text(text = "CLOSE", fontSize = 12.sp)
                     }
                 }
 

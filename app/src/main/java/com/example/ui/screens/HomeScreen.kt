@@ -280,15 +280,21 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        val case001 = uiState.savedCases.firstOrNull { it.identity.caseId == "case_blackwood_001" }
-            ?: uiState.savedCases.firstOrNull()
+        // Display first available case, or show empty state if library is empty
+        val displayedCase = uiState.savedCases.firstOrNull()
 
-        if (case001 != null) {
+        if (displayedCase != null) {
             CaseSummaryCard(
-                casePkg = case001,
+                casePkg = displayedCase,
                 onPlayCase = {
-                    viewModel.selectCase(case001)
+                    viewModel.selectCase(displayedCase)
                 }
+            )
+        } else {
+            Text(
+                text = "No cases saved. Generate a new case to begin.",
+                color = MutedText,
+                fontSize = 12.sp
             )
         }
 

@@ -107,9 +107,8 @@ fun CaseLibraryScreen(
                             viewModel.selectCase(casePkg)
                         },
                         onDelete = {
-                            if (casePkg.identity.caseId != "case_blackwood_001") {
-                                viewModel.deleteCase(casePkg.identity.caseId)
-                            }
+                            // Allow deletion of any case from the library
+                            viewModel.deleteCase(casePkg.identity.caseId)
                         }
                     )
                 }
@@ -186,31 +185,16 @@ fun CaseLibraryItem(
                 )
             }
 
-            if (casePkg.identity.caseId != "case_blackwood_001") {
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.DeleteOutline,
-                        contentDescription = "Delete",
-                        tint = WarningRedBright,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            } else {
-                Surface(
-                    color = GoldAccent.copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        text = "CORE",
-                        color = GoldLight,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = "Delete",
+                    tint = WarningRedBright,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }

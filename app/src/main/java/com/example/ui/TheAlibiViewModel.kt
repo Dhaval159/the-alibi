@@ -1,8 +1,10 @@
 package com.example.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.data.TheAlibiRepository
+import com.example.data.GameRepository
+import com.example.data.GameRepositoryFactory
 import com.example.model.*
 import com.example.util.SoundManager
 import kotlinx.coroutines.Job
@@ -98,13 +100,30 @@ data class TheAlibiUiState(
     val isSfxEnabled: Boolean = true,
     val isNarrationEnabled: Boolean = true,
     // Notifications & user alerts
-    val toastMessage: String? = null
+    val toastMessage: String? = null,
+    // Repository & Auth abstraction
+    val authIdentity: AuthIdentity? = null,
+    val connectionState: ConnectionState = ConnectionState.Connected,
+    val isLoading: Boolean = false
 )
 
 class TheAlibiViewModel(
-    private val repository: TheAlibiRepository = TheAlibiRepository(),
+    val repository: GameRepository = GameRepositoryFactory.createRepository(GameMode.OFFLINE_DEMO),
     val soundManager: SoundManager = SoundManager()
 ) : ViewModel() {
+
+    class Factory(
+        private val repository: GameRepository,
+        private val soundManager: SoundManager = SoundManager()
+    ) : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            if (modelClass.isAssignableFrom(TheAlibiViewModel::class.java)) {
+                return TheAlibiViewModel(repository, soundManager) as T
+            }
+            throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+        }
+    }
 
     private val _uiState = MutableStateFlow(TheAlibiUiState())
     val uiState: StateFlow<TheAlibiUiState> = _uiState.asStateFlow()
@@ -112,6 +131,16 @@ class TheAlibiViewModel(
     private var generationJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            repository.authIdentity.collect { identity ->
+                _uiState.value = _uiState.value.copy(authIdentity = identity)
+            }
+        }
+        viewModelScope.launch {
+            repository.connectionState.collect { conn ->
+                _uiState.value = _uiState.value.copy(connectionState = conn)
+            }
+        }
         viewModelScope.launch {
             repository.activeCase.collect { casePkg ->
                 _uiState.value = _uiState.value.copy(activeCase = casePkg)

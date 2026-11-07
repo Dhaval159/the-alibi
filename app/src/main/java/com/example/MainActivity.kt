@@ -33,30 +33,50 @@ import com.example.ui.TheAlibiViewModel
 import com.example.ui.screens.*
 import com.example.ui.theme.*
 
+import com.example.data.GameRepositoryFactory
 import com.example.data.firebase.FirebaseAuthRepository
+import com.example.model.GameMode
 import com.example.ui.screens.GoogleSignInScreen
+
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    private val viewModel: TheAlibiViewModel by viewModels()
+    private val viewModel: TheAlibiViewModel by viewModels {
+        TheAlibiViewModel.Factory(
+            repository = GameRepositoryFactory.createRepository(GameMode.OFFLINE_DEMO)
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val authRepo = FirebaseAuthRepository(this)
+
+        // Asynchronously sign in anonymously in the background.
+        // If an authenticated session already exists, it is reused immediately.
+        lifecycleScope.launch {
+            authRepo.signInAnonymously()
+        }
+
         setContent {
             TheAlibiTheme {
-                val currentUser by authRepo.currentUser.collectAsStateWithLifecycle()
-                if (currentUser == null) {
-                    GoogleSignInScreen(
-                        authRepository = authRepo,
-                        onAuthSuccess = { /* AuthStateListener will update currentUser */ }
-                    )
-                } else {
-                    key(currentUser!!.uid) {
-                        TheAlibiApp(viewModel = viewModel)
+                val authIdentity by authRepo.authIdentity.collectAsStateWithLifecycle()
+
+                // Propagate authenticated identity to repository if available
+                LaunchedEffect(authIdentity) {
+                    authIdentity?.let { identity ->
+                        val repo = viewModel.repository
+                        if (repo is com.example.data.TheAlibiRepository) {
+                            repo.setAuthIdentity(identity)
+                        } else if (repo is com.example.data.UnavailableFirebaseGameRepository) {
+                            repo.setAuthIdentity(identity)
+                        }
                     }
                 }
+
+                TheAlibiApp(viewModel = viewModel)
             }
         }
     }
